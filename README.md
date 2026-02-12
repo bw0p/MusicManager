@@ -7,7 +7,8 @@ Features:
 2. Smart spacing for when you need to rename files and maintain spaces between title names but remove any extra spaces left by previous text you removed. (Toggable)
 
 # How to run
-I use VS Code so im not sure how this would work on other IDEs
+I use VS Code so im not sure how this would work on other IDEs.
+
 For VS Code make sure you have the Python extension downloaded!!
 
 ```

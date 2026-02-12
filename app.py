@@ -148,29 +148,50 @@ def apply_remove_rules(name_no_ext: str, rules: list[str], smart_spaces: bool) -
 #seperate function to remove text between delimiters, as this is a common use case that benefits from non-greedy matching and delimiter-aware spacing
 def remove_between_delims(s: str, left: str, right: str) -> str:
     """
-    Removes occurrences of left...right INCLUDING the delimiters.
-    Example: left='[', right=']' turns "[hello] Song" -> " Song"
-    Non-greedy (removes smallest matches). Safe if delimiters are empty.
+    Removes text between delimiters INCLUDING delimiters.
+
+    - If left != right: supports nesting (e.g. [[04]] with [])
+    - If left == right: treats delimiter as a toggle (e.g. &extra& with &&)
     """
     left = (left or "").strip()
     right = (right or "").strip()
     if len(left) != 1 or len(right) != 1:
-        return s  # ignore invalid input
+        return s
 
-    # Escape delimiters for regex
-    l = re.escape(left)
-    r = re.escape(right)
+    # Case 1: same delimiter on both sides (e.g. '&' ... '&')
+    if left == right:
+        out = []
+        inside = False
+        for ch in s:
+            if ch == left:
+                inside = not inside  # toggle
+                continue
+            if not inside:
+                out.append(ch)
+        return "".join(out)
 
-    # Non-greedy match between
-    return re.sub(l + r".*?" + r, "", s)
+    # Case 2: different delimiters (supports nesting)
+    out = []
+    depth = 0
+    for ch in s:
+        if ch == left:
+            depth += 1
+            continue
+        if ch == right and depth > 0:
+            depth -= 1
+            continue
+        if depth == 0:
+            out.append(ch)
+    return "".join(out)
 
 
 
 
+#==== Main GUI Application ====
 class MusicFixGUI(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Music Fixer (Filename + Tags)")
+        self.title("Music File Manager (Filename + Tags)")
         self.geometry("1100x650")
 
         self.folder = None
@@ -252,6 +273,8 @@ class MusicFixGUI(tk.Tk):
 
         ttk.Label(between, text="Pair:").pack(side="left", padx=(12, 4))
         self.between_pair = ttk.Entry(between, width=6)
+        vcmd = (self.register(lambda s: len(s) <= 2), "%P")
+        self.between_pair.config(validate="key", validatecommand=vcmd)
         self.between_pair.insert(0, "[]")  # default example
         self.between_pair.pack(side="left")
 
@@ -335,11 +358,19 @@ class MusicFixGUI(tk.Tk):
             base_no_ext = os.path.splitext(filename)[0]
             proposed_base = apply_remove_rules(base_no_ext, rules, smart_spaces=smart)
 
-            if hasattr(self, "between_enabled") and self.between_enabled.get():
-                pair = self.between_pair.get().strip() if hasattr(self, "between_pair") else ""
-                if len(pair) >= 2:
+            use_between = bool(self.between_enabled.get()) if hasattr(self, "between_enabled") else False
+            if use_between:
+                pair = self.between_pair.get() if hasattr(self, "between_pair") else ""
+                if len(pair) == 2:
                     left, right = pair[0], pair[1]
                     proposed_base = remove_between_delims(proposed_base, left, right)
+                else:
+                    warnings.append("Delimiter pair must be exactly 2 characters (e.g. [] or &&).")
+
+
+
+
+
 
             proposed_base = safe_filename(clean_spaces(proposed_base))
 
@@ -354,7 +385,8 @@ class MusicFixGUI(tk.Tk):
                 "album_artist": album_artist or "",
                 "track": track or "",
                 "proposed_filename": proposed_filename,
-                "warnings": "; ".join(warnings),
+                "base_warnings": list(warnings),     # keep as list
+                "warnings": "; ".join(warnings),     # display string
                 "set_album_artist": None,   # pending override
                 "set_track": None,          # pending override
             }
@@ -535,20 +567,34 @@ class MusicFixGUI(tk.Tk):
         smart = bool(self.smart_spaces_var.get())
 
         use_between = bool(self.between_enabled.get()) if hasattr(self, "between_enabled") else False
-        pair = self.between_pair.get().strip() if hasattr(self, "between_pair") else ""
+        pair = self.between_pair.get() if hasattr(self, "between_pair") else ""
+
+        # Allow ANY 2 characters, e.g. &...&
+        left, right = (pair[0], pair[1]) if len(pair) == 2 else (None, None)
 
         for it in self.items:
+            # Reset warnings to whatever scan_folder originally computed
+            base = it.get("base_warnings", [])
+            it["warnings"] = "; ".join(base)
+
             base_no_ext = os.path.splitext(it["filename"])[0]
             proposed_base = apply_remove_rules(base_no_ext, rules, smart_spaces=smart)
 
-            if use_between and len(pair) >= 2:
-                left, right = pair[0], pair[1]
-                proposed_base = remove_between_delims(proposed_base, left, right)
+            if use_between:
+                if left and right:
+                    proposed_base = remove_between_delims(proposed_base, left, right)
+                else:
+                    # add warning cleanly (without duplicating)
+                    w = list(base)
+                    w.append("Delimiter pair must be exactly 2 characters (e.g. [] or &&).")
+                    it["warnings"] = "; ".join(w)
 
             proposed_base = safe_filename(clean_spaces(proposed_base))
             it["proposed_filename"] = proposed_base + it["ext"]
 
         self._refresh_tree()
+
+
 
 
     #Tutorial for Remove Rules
@@ -595,10 +641,6 @@ class MusicFixGUI(tk.Tk):
             "  (This is expected and helps produce clean titles.)\n\n"
             "Avoid overly generic rules like just '-' because it can remove too much."
         )
-
-
-        self._refresh_tree()
-
 
 
 
