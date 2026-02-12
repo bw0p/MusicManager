@@ -1,4 +1,4 @@
-# Music File Manager Ver 0.0.9
+# Music File Manager Ver 0.1.0
 A simple music manager for renaming files and setting meta data.
 btw rn its a bit broken so erm only the renaming works as of 12/02/2026
 
@@ -20,4 +20,6 @@ python app.py
 ```
 
 Or I think hitting run debugging should make use of the .json (you still need an environment)
+
+Eventually I will be releasing an exe file but you're free to use the repo itself to run the software.
 
