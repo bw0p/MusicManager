@@ -10,11 +10,12 @@ from rename_rules import (
     apply_remove_rules,
     remove_between_delims,
     extract_leading_index,
+    extract_index_with_pair,
 )
 from audio_utils import first_contributing_artist, get_tag, set_tag, load_audio
 
 
-
+#All supported audio extensions (case-insensitive)
 AUDIO_EXTS = {".mp3", ".m4a", ".flac", ".ogg", ".opus", ".wav", ".aiff", ".aac"}
 
 
@@ -44,16 +45,20 @@ class MusicFixGUI(tk.Tk):
 
         ttk.Button(controls, text="Clear All Changes", command=self.clear_all_changes).pack(side="left")
         ttk.Button(controls, text="Apply Changes (Rename + Tags)", command=self.apply_changes).pack(side="right")
-
+        
         # Album artist override
         aa_frame = ttk.Frame(self)
         aa_frame.pack(fill="x", padx=10, pady=8)
 
-        ttk.Label(aa_frame, text="Set Album Artist input (for selected rows):").pack(side="left")
+        ttk.Label(aa_frame, text="Set Album Artist:").pack(side="left")
         self.album_artist_entry = ttk.Entry(aa_frame, width=40)
         self.album_artist_entry.pack(side="left", padx=8)
 
-        ttk.Button(aa_frame, text="Change", command=self.set_album_artist_for_selected).pack(side="left")
+        ttk.Button(aa_frame, text="Change to Selected", command=self.set_album_artist_for_selected).pack(side="left", padx=(0, 6))
+        ttk.Button(aa_frame, text="Change to All", command=self.set_album_artist_for_all).pack(side="left", padx=(0, 6))
+        ttk.Separator(aa_frame, orient="vertical").pack(side="left", fill="y", padx=10)
+        ttk.Button(aa_frame, text="Clear (Selected)", command=self.clear_album_artist_selected).pack(side="left", padx=(0, 6))
+        ttk.Button(aa_frame, text="Clear (All)", command=self.clear_album_artist_all).pack(side="left")
 
         # --- Rename removal rules ---
         rr = ttk.Frame(self)
@@ -121,13 +126,23 @@ class MusicFixGUI(tk.Tk):
 
         ttk.Button(table_bar, text="Use table order as Track #", command=self.apply_order_as_track_numbers).pack(side="left")
         ttk.Button(table_bar, text="Extract Track # from Title", command=self.extract_track_from_titles).pack(side="left", padx=5)
+        ttk.Label(table_bar, text="Extract markers:").pack(side="left", padx=(1, 4))
+        self.track_pair = ttk.Entry(table_bar, width=6)
+        vcmd2 = (self.register(lambda s: len(s) <= 2), "%P")
+        self.track_pair.config(validate="key", validatecommand=vcmd2)
+        self.track_pair.insert(0, "[]")
+        self.track_pair.pack(side="left")
+
+        ttk.Button(table_bar, text="Clear Track # (Selected)", command=self.clear_track_selected).pack(side="left", padx=(10, 0))
+        ttk.Button(table_bar, text="Clear Track # (All)", command=self.clear_track_all).pack(side="left", padx=5)
+
 
         # Treeview table
         cols = ("current", "proposed", "artist_used", "albumartist", "track", "warnings")
         self.tree = ttk.Treeview(self, columns=cols, show="headings", selectmode="extended")
         self.tree.heading("current", text="Current Filename")
         self.tree.heading("proposed", text="Proposed Filename")
-        self.tree.heading("artist_used", text="Artist Used (first)")
+        self.tree.heading("artist_used", text="First Contributing Artist")
         self.tree.heading("albumartist", text="Album Artist (tag)")
         self.tree.heading("track", text="Track # (tag)")
         self.tree.heading("warnings", text="Warnings")
@@ -286,6 +301,7 @@ class MusicFixGUI(tk.Tk):
             return
         sel = self.tree.selection()
         if not sel:
+            messagebox.showinfo("No selection", "Select one or more rows first.")
             return
         for iid in sel:
             self.items[int(iid)]["set_album_artist"] = value
@@ -298,19 +314,29 @@ class MusicFixGUI(tk.Tk):
 
     def extract_track_from_titles(self):
         changed = 0
+        pair = self.track_pair.get().strip() if hasattr(self, "track_pair") else "[]"
+
         for it in self.items:
             current_track = it["set_track"] if it["set_track"] is not None else it["track"]
             if current_track:
                 continue
 
             title_no_ext = os.path.splitext(it["proposed_filename"])[0]
-            maybe = extract_leading_index(title_no_ext)
+
+            # 1) try custom markers first
+            maybe = extract_index_with_pair(title_no_ext, pair)
+
+            # 2) fallback to your existing generic patterns
+            if maybe is None:
+                maybe = extract_leading_index(title_no_ext)
+
             if maybe is not None:
                 it["set_track"] = f"{maybe:02d}"
                 changed += 1
 
         self._refresh_tree()
         messagebox.showinfo("Extract Track #", f"Set track numbers for {changed} file(s) where index was detectable.")
+
 
     def apply_changes(self):
         if not self.folder or not self.items:
@@ -464,3 +490,39 @@ class MusicFixGUI(tk.Tk):
             it["warnings"] = "; ".join(base)
 
         self.recompute_proposed_names()
+
+    def clear_track_selected(self):
+        sel = self.tree.selection()
+        if not sel:
+            return
+        for iid in sel:
+            self.items[int(iid)]["set_track"] = None
+        self._refresh_tree()
+
+    def clear_track_all(self):
+        for it in self.items:
+            it["set_track"] = None
+        self._refresh_tree()
+
+    def set_album_artist_for_all(self):
+        value = self.album_artist_entry.get().strip()
+        if not value:
+            messagebox.showwarning("Empty", "Enter an Album Artist value first.")
+            return
+        for it in self.items:
+            it["set_album_artist"] = value
+        self._refresh_tree()
+
+    def clear_album_artist_selected(self):
+        sel = self.tree.selection()
+        if not sel:
+            return
+        for iid in sel:
+            self.items[int(iid)]["set_album_artist"] = None
+        self._refresh_tree()
+
+    def clear_album_artist_all(self):
+        for it in self.items:
+            it["set_album_artist"] = None
+        self._refresh_tree()
+

@@ -107,3 +107,25 @@ def remove_between_delims(s: str, left: str, right: str) -> str:
         if depth == 0:
             out.append(ch)
     return "".join(out)
+
+def extract_index_with_pair(title: str, pair: str) -> int | None:
+    s = title.strip()
+    pair = (pair or "").strip()
+
+    if len(pair) != 2:
+        return None
+
+    left, right = pair[0], pair[1]
+
+    # Same-char pair: ZZ means Z03Z
+    if left == right:
+        m = re.match(rf"^{re.escape(left)}\s*(\d{{1,3}})\s*{re.escape(right)}\s+", s)
+        if m:
+            return int(m.group(1))
+        return None
+
+    # Normal: [] () {} etc
+    m = re.match(rf"^{re.escape(left)}\s*(\d{{1,3}})\s*{re.escape(right)}\s+", s)
+    if m:
+        return int(m.group(1))
+    return None
