@@ -1,8 +1,8 @@
 import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from audio_utils import ensure_id3_header
 
-from mutagen import File  # pip install mutagen
 
 from rename_rules import (
     clean_spaces,
@@ -11,7 +11,8 @@ from rename_rules import (
     remove_between_delims,
     extract_leading_index,
 )
-from audio_utils import first_contributing_artist, get_tag, set_tag
+from audio_utils import first_contributing_artist, get_tag, set_tag, load_audio
+
 
 
 AUDIO_EXTS = {".mp3", ".m4a", ".flac", ".ogg", ".opus", ".wav", ".aiff", ".aac"}
@@ -155,7 +156,7 @@ class MusicFixGUI(tk.Tk):
         if not self.folder:
             messagebox.showwarning("No folder", "Choose a folder first.")
             return
-
+        #print("[scan_folder] scanning:", self.folder)
         self.items.clear()
         for row in self.tree.get_children():
             self.tree.delete(row)
@@ -175,14 +176,19 @@ class MusicFixGUI(tk.Tk):
             if ext not in AUDIO_EXTS:
                 continue
 
-            audio = File(src, easy=True)
+            audio, err = load_audio(src)
             warnings = []
             artist_first = None
             album_artist = None
             track = None
 
-            if not audio:
-                warnings.append("Unsupported tags")
+            if audio is None:
+                warnings.append("Failed to read as audio file/Could not read tags")
+                warnings.append(err or "(no error provided)")
+                print(f"[load_audio] {filename}: {repr(err)}")
+
+
+
             else:
                 artist_first = first_contributing_artist(audio)
                 album_artist = get_tag(audio, "albumartist")
@@ -214,7 +220,7 @@ class MusicFixGUI(tk.Tk):
                 "src": src,
                 "filename": filename,
                 "ext": ext,
-                "audio_ok": bool(audio),
+                "audio_ok": (audio is not None),
                 "artist_first": artist_first or "",
                 "album_artist": album_artist or "",
                 "track": track or "",
@@ -351,14 +357,22 @@ class MusicFixGUI(tk.Tk):
                     it["src"] = dst
 
         tag_errors = 0
+        tag_skipped = 0
+        
+        # ensure MP3 tag container exists before saving
         for it in self.items:
-            audio = File(it["src"], easy=True)
-            if not audio:
+            if it["src"].lower().endswith(".mp3"):
+                ensure_id3_header(it["src"])
+
+            audio, err = load_audio(it["src"])
+            if audio is None:
+                tag_skipped += 1
+                if err:
+                    print(f"[apply load_audio] {it['filename']}: {err}")
                 continue
 
             current_albumartist = get_tag(audio, "albumartist")
             artist_first = first_contributing_artist(audio)
-
             desired_albumartist = it["set_album_artist"]
             if desired_albumartist is None:
                 if not current_albumartist and artist_first:
@@ -372,14 +386,19 @@ class MusicFixGUI(tk.Tk):
                     set_tag(audio, "tracknumber", it["set_track"])
 
                 audio.save()
-            except Exception:
+            except Exception as e:
                 tag_errors += 1
+                print(f"[tag save failed] {it['filename']}: {type(e).__name__}: {e}")
+
 
         self.scan_folder()
         msg = "Done."
+        if tag_skipped:
+            msg += f"\n\nNote: {tag_skipped} file(s) did not support tag editing (Mutagen couldn't open tags)."
         if tag_errors:
             msg += f"\n\nNote: {tag_errors} file(s) failed tag writing (format limitations or locked files)."
         messagebox.showinfo("Apply", msg)
+
 
     def recompute_proposed_names(self):
         rules = self.remove_text.get("1.0", "end").splitlines()
