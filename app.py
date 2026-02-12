@@ -130,6 +130,7 @@ def build_fuzzy_pattern(literal: str) -> re.Pattern:
 
     return re.compile(esc, flags=re.IGNORECASE)
 
+#function that applies the user-defined remove rules to a filename (without extension), with an option for smart spacing
 def apply_remove_rules(name_no_ext: str, rules: list[str], smart_spaces: bool) -> str:
     s = name_no_ext
     for rule in rules:
@@ -143,6 +144,25 @@ def apply_remove_rules(name_no_ext: str, rules: list[str], smart_spaces: bool) -
             s = s.replace(rule, "")
         s = clean_spaces(s)
     return s
+
+#seperate function to remove text between delimiters, as this is a common use case that benefits from non-greedy matching and delimiter-aware spacing
+def remove_between_delims(s: str, left: str, right: str) -> str:
+    """
+    Removes occurrences of left...right INCLUDING the delimiters.
+    Example: left='[', right=']' turns "[hello] Song" -> " Song"
+    Non-greedy (removes smallest matches). Safe if delimiters are empty.
+    """
+    left = (left or "").strip()
+    right = (right or "").strip()
+    if len(left) != 1 or len(right) != 1:
+        return s  # ignore invalid input
+
+    # Escape delimiters for regex
+    l = re.escape(left)
+    r = re.escape(right)
+
+    # Non-greedy match between
+    return re.sub(l + r".*?" + r, "", s)
 
 
 
@@ -217,6 +237,26 @@ class MusicFixGUI(tk.Tk):
         ttk.Checkbutton(opt, text="Smart spacing (ignore extra spaces around hyphens/spaces)", variable=self.smart_spaces_var).pack(side="left")
 
         ttk.Button(opt, text="Recompute Proposed Names", command=self.recompute_proposed_names).pack(side="right")
+        #--- end of rename rules section ---
+
+        #--- Remove between delimiters section ---
+        between = ttk.Frame(self)
+        between.pack(fill="x", padx=10, pady=6)
+
+        self.between_enabled = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            between,
+            text="Also remove text between delimiters (including delimiters)",
+            variable=self.between_enabled
+        ).pack(side="left")
+
+        ttk.Label(between, text="Pair:").pack(side="left", padx=(12, 4))
+        self.between_pair = ttk.Entry(between, width=6)
+        self.between_pair.insert(0, "[]")  # default example
+        self.between_pair.pack(side="left")
+
+        ttk.Label(between, text="(Example: [] removes [anything])").pack(side="left", padx=8)
+        #--- end of remove between delimiters section ---
 
 
         # Treeview table
@@ -294,7 +334,15 @@ class MusicFixGUI(tk.Tk):
             smart = bool(self.smart_spaces_var.get()) if hasattr(self, "smart_spaces_var") else True
             base_no_ext = os.path.splitext(filename)[0]
             proposed_base = apply_remove_rules(base_no_ext, rules, smart_spaces=smart)
+
+            if hasattr(self, "between_enabled") and self.between_enabled.get():
+                pair = self.between_pair.get().strip() if hasattr(self, "between_pair") else ""
+                if len(pair) >= 2:
+                    left, right = pair[0], pair[1]
+                    proposed_base = remove_between_delims(proposed_base, left, right)
+
             proposed_base = safe_filename(clean_spaces(proposed_base))
+
             proposed_filename = proposed_base + ext
 
             item = {
@@ -486,11 +534,23 @@ class MusicFixGUI(tk.Tk):
         rules = self.remove_text.get("1.0", "end").splitlines()
         smart = bool(self.smart_spaces_var.get())
 
+        use_between = bool(self.between_enabled.get()) if hasattr(self, "between_enabled") else False
+        pair = self.between_pair.get().strip() if hasattr(self, "between_pair") else ""
+
         for it in self.items:
             base_no_ext = os.path.splitext(it["filename"])[0]
             proposed_base = apply_remove_rules(base_no_ext, rules, smart_spaces=smart)
+
+            if use_between and len(pair) >= 2:
+                left, right = pair[0], pair[1]
+                proposed_base = remove_between_delims(proposed_base, left, right)
+
             proposed_base = safe_filename(clean_spaces(proposed_base))
             it["proposed_filename"] = proposed_base + it["ext"]
+
+        self._refresh_tree()
+
+
     #Tutorial for Remove Rules
     def show_remove_rules_help(self):
         messagebox.showinfo(
@@ -505,6 +565,28 @@ class MusicFixGUI(tk.Tk):
             "  SpotiDownloader.com -\n"
             "  - Kanye West\n"
             "  - Copy\n\n"
+            "This would produce:\n"
+            "The Glory\n\n"
+            "If you turn off smart spacing, you might gain spaces around the removed text. For example if instead of the previous example, you didn't include '-' in each rule and instead added it as its own rule, you might end up with extra spaces.\n\n"
+            "Example File Name:\n"
+            " [03] SpotiDownloader.com - Stronger - Kanye West - Copy\n\n"
+            "Using these rules:\n"
+             " SpotiDownloader.com\n"
+            "  Kanye West\n"
+            "  Copy\n"
+            "  -\n\n"
+            "Would produce:\n"
+            "[03] Stronger\n\n"
+            "Which provides a clean title. Turning on smart spacing would remove that space next to SpotiDownloader.com and the hyphen, giving you:\n"
+            "[03]Stronger\n\n"
+            "Which personally to me doesn't look as good, but you might prefer it. It's up to you! You can experiment with the rules and see the proposed filename update in real time.\n\n"
+            "Just make sure to always click on 'Recompile Proposed Names' after changing rules to see the effect on proposed filenames.\n\n"
+            "Also, you can remove text between delimiters:\n"
+            "  Example: [] removes [anything]\n\n"
+            "Meaning if we had to use the previous example:\n" \
+            " [03] SpotiDownloader.com - Stronger - Kanye West - Copy\n\n"
+            "With the '[]' delimiter removal enabled, it would produce:\n"
+            "Stronger\n\n"
             "Tips:\n"
             "• Press Enter for the next rule (one rule per line).\n"
             "• Smart spacing is ON by default, so spacing around '-' is flexible.\n"
