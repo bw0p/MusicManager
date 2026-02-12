@@ -195,7 +195,14 @@ class MusicFixGUI(tk.Tk):
         rr = ttk.Frame(self)
         rr.pack(fill="x", padx=10, pady=6)
 
-        ttk.Label(rr, text="Remove text from filename (one per line):").pack(anchor="w")
+        #Button to show help for remove rules, and label
+        header = ttk.Frame(rr)
+        header.pack(fill="x")
+
+        ttk.Label(header, text="Remove text from filename (one per line):").pack(side="left", anchor="w")
+
+        ttk.Button(header, text="?", width=3, command=self.show_remove_rules_help).pack(side="right")
+
 
         self.remove_text = tk.Text(rr, height=4)
         self.remove_text.pack(fill="x", pady=4)
@@ -484,6 +491,29 @@ class MusicFixGUI(tk.Tk):
             proposed_base = apply_remove_rules(base_no_ext, rules, smart_spaces=smart)
             proposed_base = safe_filename(clean_spaces(proposed_base))
             it["proposed_filename"] = proposed_base + it["ext"]
+    #Tutorial for Remove Rules
+    def show_remove_rules_help(self):
+        messagebox.showinfo(
+            "How to use: Remove Rules",
+            "Remove Rules (one per line)\n"
+            "--------------------------\n"
+            "Type pieces of text you want removed from filenames.\n"
+            "Each line is applied in order.\n\n"
+            "Example filename:\n"
+            "  SpotiDownloader.com - The Glory - Kanye West - Copy\n\n"
+            "Recommended rules:\n"
+            "  SpotiDownloader.com -\n"
+            "  - Kanye West\n"
+            "  - Copy\n\n"
+            "Tips:\n"
+            "• Press Enter for the next rule (one rule per line).\n"
+            "• Smart spacing is ON by default, so spacing around '-' is flexible.\n"
+            "• If you remove text without including the '-', you might keep extra separators.\n"
+            "  If you remove text WITH '-', you may also remove spacing around it.\n"
+            "  (This is expected and helps produce clean titles.)\n\n"
+            "Avoid overly generic rules like just '-' because it can remove too much."
+        )
+
 
         self._refresh_tree()
 
