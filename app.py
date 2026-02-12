@@ -186,7 +186,6 @@ def remove_between_delims(s: str, left: str, right: str) -> str:
 
 
 
-
 #==== Main GUI Application ====
 class MusicFixGUI(tk.Tk):
     def __init__(self):
@@ -212,14 +211,9 @@ class MusicFixGUI(tk.Tk):
         controls = ttk.Frame(self)
         controls.pack(fill="x", padx=10)
 
-        ttk.Button(controls, text="Refresh / Preview", command=self.scan_folder).pack(side="left")
-        ttk.Button(controls, text="Move Up", command=lambda: self.move_selected(-1)).pack(side="left", padx=5)
-        ttk.Button(controls, text="Move Down", command=lambda: self.move_selected(1)).pack(side="left", padx=5)
-
+        ttk.Button(controls, text="Clear All Changes", command=self.clear_all_changes).pack(side="left")
         ttk.Button(controls, text="Use order as Track #", command=self.apply_order_as_track_numbers).pack(side="left", padx=12)
-
         ttk.Button(controls, text="Extract Track # from Title", command=self.extract_track_from_titles).pack(side="left", padx=5)
-
         ttk.Button(controls, text="Apply Changes (Rename + Tags)", command=self.apply_changes).pack(side="right")
 
         # Album artist override
@@ -240,12 +234,10 @@ class MusicFixGUI(tk.Tk):
         header = ttk.Frame(rr)
         header.pack(fill="x")
 
-        ttk.Label(header, text="Remove text from filename (one per line):").pack(side="left", anchor="w")
-
         #help button for remove rules
         ttk.Button(header, text="?", width=3, command=self.show_remove_rules_help).pack(side="left")
-
-
+        ttk.Label(header, text="Remove text from filename (one per line):").pack(side="left", anchor="w")
+        
         self.remove_text = tk.Text(rr, height=4)
         self.remove_text.pack(fill="x", pady=4)
         self.remove_text.bind("<KeyRelease>", lambda e: self.recompute_proposed_names())
@@ -292,7 +284,10 @@ class MusicFixGUI(tk.Tk):
         table_bar = ttk.Frame(self)
         table_bar.pack(fill="x", padx=10, pady=(0, 4))
 
-        ttk.Button(table_bar, text="Recompute Names", command=self.recompute_proposed_names).pack(side="left")
+        ttk.Button(table_bar, text="Preview File Changes", command=self.recompute_proposed_names).pack(side="left")
+        ttk.Button(table_bar, text="Move Up", command=lambda: self.move_selected(-1)).pack(side="left", padx=5)
+        ttk.Button(table_bar, text="Move Down", command=lambda: self.move_selected(1)).pack(side="left", padx=5)
+
         ttk.Label(table_bar, text=" ").pack(side="left", expand=True)  # spacer
 
 
@@ -608,9 +603,6 @@ class MusicFixGUI(tk.Tk):
 
         self._refresh_tree()
 
-
-
-
     #Tutorial for Remove Rules
     def show_remove_rules_help(self):
         messagebox.showinfo(
@@ -655,7 +647,22 @@ class MusicFixGUI(tk.Tk):
             "  (This is expected and helps produce clean titles.)\n\n"
             "Avoid overly generic rules like just '-' because it can remove too much."
         )
+    
+    def clear_all_changes(self):
+        """
+        Clears pending tag edits (album artist + track), resets warnings to base,
+        then recomputes proposed filenames using the current rules.
+        Does NOT rescan the folder, so custom table order stays.
+        """
+        for it in self.items:
+            it["set_album_artist"] = None
+            it["set_track"] = None
 
+            base = it.get("base_warnings", [])
+            it["warnings"] = "; ".join(base)
+
+        # Re-apply current rename rules to update proposed names
+        self.recompute_proposed_names()
 
 
 

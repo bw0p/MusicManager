@@ -1,11 +1,11 @@
-# MusicManager
+# Music File Manager Ver 0.0.9
 A simple music manager for renaming files and setting meta data.
 btw rn its a bit broken so erm only the renaming works as of 12/02/2026
 
 Features:
 1. Bulk renaming with a simple intuitive text box. 
 2. Smart spacing for when you need to rename files and maintain spaces between title names but remove any extra spaces left by previous text you removed. (Toggable)
-3. Delimiters allow for you to bulk delete strings between 2 values such as []. Meaning song names with [ExtraName] Song Title.mp3 would be easily fixed by adding [] in the rule set deleting the brackets and the content inside. However this feature is seperate from the main rule box allowing you to customise song titles without having to use this feature.
+3. Delimiters allow for you to bulk delete strings between 2 values such as []. Meaning song names with [ExtraName] Song Title.mp3 would be easily fixed by adding [] in the rule set deleting the brackets and the content inside. However this feature is seperate from the main rule box allowing you to customise song titles without this feature making unwanted changes.
 
 # How to run
 I use VS Code so im not sure how this would work on other IDEs.
