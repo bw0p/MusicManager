@@ -242,11 +242,13 @@ class MusicFixGUI(tk.Tk):
 
         ttk.Label(header, text="Remove text from filename (one per line):").pack(side="left", anchor="w")
 
-        ttk.Button(header, text="?", width=3, command=self.show_remove_rules_help).pack(side="right")
+        #help button for remove rules
+        ttk.Button(header, text="?", width=3, command=self.show_remove_rules_help).pack(side="left")
 
 
         self.remove_text = tk.Text(rr, height=4)
         self.remove_text.pack(fill="x", pady=4)
+        self.remove_text.bind("<KeyRelease>", lambda e: self.recompute_proposed_names())
 
         # sensible default
         self.remove_text.insert("1.0", "SpotiDownloader.com - \n")
@@ -255,9 +257,11 @@ class MusicFixGUI(tk.Tk):
         opt.pack(fill="x")
 
         self.smart_spaces_var = tk.BooleanVar(value=True)
+        self.smart_spaces_var.trace_add("write", lambda *args: self.recompute_proposed_names())
+
         ttk.Checkbutton(opt, text="Smart spacing (ignore extra spaces around hyphens/spaces)", variable=self.smart_spaces_var).pack(side="left")
 
-        ttk.Button(opt, text="Recompute Proposed Names", command=self.recompute_proposed_names).pack(side="right")
+        #ttk.Button(opt, text="Recompute Proposed Names", command=self.recompute_proposed_names).pack(side="left")
         #--- end of rename rules section ---
 
         #--- Remove between delimiters section ---
@@ -265,6 +269,8 @@ class MusicFixGUI(tk.Tk):
         between.pack(fill="x", padx=10, pady=6)
 
         self.between_enabled = tk.BooleanVar(value=False)
+        self.between_enabled.trace_add("write", lambda *args: self.recompute_proposed_names())
+
         ttk.Checkbutton(
             between,
             text="Also remove text between delimiters (including delimiters)",
@@ -273,6 +279,7 @@ class MusicFixGUI(tk.Tk):
 
         ttk.Label(between, text="Pair:").pack(side="left", padx=(12, 4))
         self.between_pair = ttk.Entry(between, width=6)
+        self.between_pair.bind("<KeyRelease>", lambda e: self.recompute_proposed_names())
         vcmd = (self.register(lambda s: len(s) <= 2), "%P")
         self.between_pair.config(validate="key", validatecommand=vcmd)
         self.between_pair.insert(0, "[]")  # default example
@@ -280,6 +287,13 @@ class MusicFixGUI(tk.Tk):
 
         ttk.Label(between, text="(Example: [] removes [anything])").pack(side="left", padx=8)
         #--- end of remove between delimiters section ---
+
+        # --- Table action bar ---
+        table_bar = ttk.Frame(self)
+        table_bar.pack(fill="x", padx=10, pady=(0, 4))
+
+        ttk.Button(table_bar, text="Recompute Names", command=self.recompute_proposed_names).pack(side="left")
+        ttk.Label(table_bar, text=" ").pack(side="left", expand=True)  # spacer
 
 
         # Treeview table
