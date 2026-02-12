@@ -191,6 +191,27 @@ class MusicFixGUI(tk.Tk):
 
         ttk.Button(aa_frame, text="Set Album Artist for Selected", command=self.set_album_artist_for_selected).pack(side="left")
 
+        # --- Rename removal rules ---
+        rr = ttk.Frame(self)
+        rr.pack(fill="x", padx=10, pady=6)
+
+        ttk.Label(rr, text="Remove text from filename (one per line):").pack(anchor="w")
+
+        self.remove_text = tk.Text(rr, height=4)
+        self.remove_text.pack(fill="x", pady=4)
+
+        # sensible default
+        self.remove_text.insert("1.0", "SpotiDownloader.com - \n")
+
+        opt = ttk.Frame(rr)
+        opt.pack(fill="x")
+
+        self.smart_spaces_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(opt, text="Smart spacing (ignore extra spaces around hyphens/spaces)", variable=self.smart_spaces_var).pack(side="left")
+
+        ttk.Button(opt, text="Recompute Proposed Names", command=self.recompute_proposed_names).pack(side="right")
+
+
         # Treeview table
         cols = ("current", "proposed", "artist_used", "albumartist", "track", "warnings")
         self.tree = ttk.Treeview(self, columns=cols, show="headings", selectmode="extended")
@@ -262,10 +283,10 @@ class MusicFixGUI(tk.Tk):
                 if not track:
                     warnings.append("Track# missing")
 
+            rules = self.remove_text.get("1.0", "end").splitlines() if hasattr(self, "remove_text") else []
+            smart = bool(self.smart_spaces_var.get()) if hasattr(self, "smart_spaces_var") else True
             base_no_ext = os.path.splitext(filename)[0]
-            proposed_base = remove_prefix(base_no_ext, PREFIX_TO_REMOVE)
-            if artist_first:
-                proposed_base = remove_trailing_artist(proposed_base, artist_first)
+            proposed_base = apply_remove_rules(base_no_ext, rules, smart_spaces=smart)
             proposed_base = safe_filename(clean_spaces(proposed_base))
             proposed_filename = proposed_base + ext
 
@@ -453,6 +474,19 @@ class MusicFixGUI(tk.Tk):
         if tag_errors:
             msg += f"\n\nNote: {tag_errors} file(s) failed tag writing (format limitations or locked files)."
         messagebox.showinfo("Apply", msg)
+
+    def recompute_proposed_names(self):
+        rules = self.remove_text.get("1.0", "end").splitlines()
+        smart = bool(self.smart_spaces_var.get())
+
+        for it in self.items:
+            base_no_ext = os.path.splitext(it["filename"])[0]
+            proposed_base = apply_remove_rules(base_no_ext, rules, smart_spaces=smart)
+            proposed_base = safe_filename(clean_spaces(proposed_base))
+            it["proposed_filename"] = proposed_base + it["ext"]
+
+        self._refresh_tree()
+
 
 
 
