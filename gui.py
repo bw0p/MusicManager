@@ -65,7 +65,7 @@ class MusicFixGUI(tk.Tk):
         self.selected_artwork = None
 
         self._build_ui()
-        self.apply_theme(self.settings.theme)
+        self.apply_theme(self.settings.theme, force_titlebar_refresh=False)
         self.update_idletasks()
         self.deiconify()
         self.after_idle(lambda: self._apply_windows_window_theme(self, self.settings.theme == "Dark"))
@@ -479,7 +479,7 @@ class MusicFixGUI(tk.Tk):
             text="Theme is saved separately and never changes when loading a rule set.",
         ).grid(row=6, column=0, columnspan=4, sticky="w", pady=(4, 0))
 
-    def apply_theme(self, theme_name: str):
+    def apply_theme(self, theme_name: str, force_titlebar_refresh: bool = True):
         dark = theme_name == "Dark"
         self.style.theme_use("clam")
 
@@ -591,12 +591,9 @@ class MusicFixGUI(tk.Tk):
         self.update_idletasks()
         self._apply_windows_window_theme(self, dark)
 
-        if sys.platform == "win32":
+        if force_titlebar_refresh and sys.platform == "win32":
             self.after(50, self._force_titlebar_refresh)
-        self.update_idletasks()
-        self._apply_windows_window_theme(self, dark)
-        self.after(10, lambda: self._apply_windows_window_theme(self, dark))
-        self.after(100, lambda: self._apply_windows_window_theme(self, dark))
+
         
         
     def _apply_windows_window_theme(self, window: tk.Misc, dark: bool):
