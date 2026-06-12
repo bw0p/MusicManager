@@ -32,7 +32,10 @@ python app.py
 
 Or make use of the built in VS code debugging that will use the launch.json. Just make sure you're on app.py when you click on run.
 
-Eventually I will be releasing an exe file but you're free to use the repo itself to run the software.
+# Releases
+I have released my first windows version of the app!
+Please head to [https://github.com/bw0p/MusicManager/releases](url) for the latest release.
+As of now I have no plans on releasing a mac or linux version unless I see people care enough to actually want one.
 
 # Issues
 None as of now
