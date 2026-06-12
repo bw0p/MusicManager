@@ -588,23 +588,36 @@ class MusicFixGUI(tk.Tk):
             selectbackground=accent,
             selectforeground="#ffffff",
         )
+        self.update_idletasks()
         self._apply_windows_window_theme(self, dark)
-        self.after_idle(lambda: self._apply_windows_window_theme(self, dark))
-        self.after(75, lambda: self._apply_windows_window_theme(self, dark))
 
+        if sys.platform == "win32":
+            self.after(50, self._force_titlebar_refresh)
+        self.update_idletasks()
+        self._apply_windows_window_theme(self, dark)
+        self.after(10, lambda: self._apply_windows_window_theme(self, dark))
+        self.after(100, lambda: self._apply_windows_window_theme(self, dark))
+        
+        
     def _apply_windows_window_theme(self, window: tk.Misc, dark: bool):
         if sys.platform != "win32":
             return
 
         _set_windows_app_mode(dark)
+
         try:
             window.update_idletasks()
+
             child_hwnd = window.winfo_id()
+
             user32 = ctypes.WinDLL("user32")
             user32.GetParent.argtypes = [ctypes.c_void_p]
             user32.GetParent.restype = ctypes.c_void_p
+
             hwnd = user32.GetParent(ctypes.c_void_p(child_hwnd)) or child_hwnd
+
             enabled = ctypes.c_int(1 if dark else 0)
+
             dwmapi = ctypes.WinDLL("dwmapi")
             dwmapi.DwmSetWindowAttribute.argtypes = [
                 ctypes.c_void_p,
@@ -613,6 +626,7 @@ class MusicFixGUI(tk.Tk):
                 ctypes.c_uint,
             ]
             dwmapi.DwmSetWindowAttribute.restype = ctypes.c_long
+
             for attribute in (20, 19):
                 result = dwmapi.DwmSetWindowAttribute(
                     ctypes.c_void_p(hwnd),
@@ -620,7 +634,14 @@ class MusicFixGUI(tk.Tk):
                     ctypes.byref(enabled),
                     ctypes.sizeof(enabled),
                 )
+
                 if result == 0:
+                    SWP_NOSIZE = 0x0001
+                    SWP_NOMOVE = 0x0002
+                    SWP_NOZORDER = 0x0004
+                    SWP_NOACTIVATE = 0x0010
+                    SWP_FRAMECHANGED = 0x0020
+
                     user32.SetWindowPos.argtypes = [
                         ctypes.c_void_p,
                         ctypes.c_void_p,
@@ -630,6 +651,8 @@ class MusicFixGUI(tk.Tk):
                         ctypes.c_int,
                         ctypes.c_uint,
                     ]
+                    user32.SetWindowPos.restype = ctypes.c_int
+
                     user32.SetWindowPos(
                         ctypes.c_void_p(hwnd),
                         None,
@@ -637,11 +660,60 @@ class MusicFixGUI(tk.Tk):
                         0,
                         0,
                         0,
-                        0x0020 | 0x0002 | 0x0001 | 0x0004,
+                        SWP_NOMOVE
+                        | SWP_NOSIZE
+                        | SWP_NOZORDER
+                        | SWP_NOACTIVATE
+                        | SWP_FRAMECHANGED,
                     )
+
+                    RDW_INVALIDATE = 0x0001
+                    RDW_UPDATENOW = 0x0100
+                    RDW_FRAME = 0x0400
+                    RDW_ALLCHILDREN = 0x0080
+
+                    user32.RedrawWindow.argtypes = [
+                        ctypes.c_void_p,
+                        ctypes.c_void_p,
+                        ctypes.c_void_p,
+                        ctypes.c_uint,
+                    ]
+                    user32.RedrawWindow.restype = ctypes.c_int
+
+                    user32.RedrawWindow(
+                        ctypes.c_void_p(hwnd),
+                        None,
+                        None,
+                        RDW_INVALIDATE | RDW_UPDATENOW | RDW_FRAME | RDW_ALLCHILDREN,
+                    )
+
                     break
+
         except (AttributeError, OSError):
             pass
+
+    def _force_titlebar_refresh(self):
+        if sys.platform != "win32":
+            return
+
+        try:
+            was_zoomed = self.state() == "zoomed"
+            geometry = self.geometry()
+
+            self.withdraw()
+            self.update_idletasks()
+            self.deiconify()
+
+            if was_zoomed:
+                self.state("zoomed")
+            else:
+                self.geometry(geometry)
+
+            self.lift()
+            self.focus_force()
+        except tk.TclError:
+            pass
+    
 
     def save_current_settings(self):
         if not any(
