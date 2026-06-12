@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from models import TrackItem
+from models import ArtworkData, TrackItem
 from warning_service import get_duplicate_track_ids, get_warnings, normalize_track_id
 
 
@@ -103,6 +103,19 @@ class TrackItemWarningTests(unittest.TestCase):
     def test_track_id_normalization_handles_padded_and_fraction_values(self):
         self.assertEqual(normalize_track_id("01"), "1")
         self.assertEqual(normalize_track_id("1/12"), "1")
+
+    def test_pending_artwork_status_can_be_reset(self):
+        item = self.make_item(artwork_present=True)
+        self.assertEqual(item.effective_artwork_status(), "Embedded")
+
+        item.set_pending_artwork(ArtworkData(b"cover", "image/jpeg"))
+        self.assertEqual(item.effective_artwork_status(), "Pending")
+
+        item.erase_artwork()
+        self.assertEqual(item.effective_artwork_status(), "Remove")
+
+        item.reset_pending_artwork()
+        self.assertEqual(item.effective_artwork_status(), "Embedded")
 
 
 if __name__ == "__main__":

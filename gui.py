@@ -6,6 +6,7 @@ from tkinter import filedialog, messagebox, ttk
 from models import TrackItem
 from rename_rules import extract_index_with_pair
 from services.apply_service import ApplyError, apply_changes as apply_item_changes
+from services.artwork_service import ArtworkError, extract_embedded_artwork, load_artwork_file
 from services.scanner import ScanOptions, propose_filename, scan_folder as scan_audio_folder
 from tag_service import (
     TAG_FIELDS,
@@ -25,6 +26,7 @@ class MusicFixGUI(tk.Tk):
 
         self.folder: Path | None = None
         self.items: list[TrackItem] = []
+        self.selected_artwork = None
 
         self._build_ui()
 
@@ -71,6 +73,7 @@ class MusicFixGUI(tk.Tk):
             "date",
             "genre",
             "track",
+            "artwork",
             "warnings",
         )
         self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="extended")
@@ -84,6 +87,7 @@ class MusicFixGUI(tk.Tk):
             "date": "Year",
             "genre": "Genre",
             "track": "Track #",
+            "artwork": "Artwork",
             "warnings": "Warnings",
         }
         widths = {
@@ -96,6 +100,7 @@ class MusicFixGUI(tk.Tk):
             "date": 80,
             "genre": 130,
             "track": 80,
+            "artwork": 90,
             "warnings": 300,
         }
         for column in columns:
@@ -105,7 +110,7 @@ class MusicFixGUI(tk.Tk):
                 width=widths[column],
                 minwidth=60,
                 stretch=False,
-                anchor="center" if column in {"date", "track"} else "w",
+                anchor="center" if column in {"date", "track", "artwork"} else "w",
             )
 
         vertical = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
@@ -137,7 +142,8 @@ class MusicFixGUI(tk.Tk):
         self._build_filename_tab()
         self._build_tags_tab()
         self._build_track_tab()
-        self._build_placeholder_tabs()
+        self._build_album_art_tab()
+        self._build_settings_tab()
 
     def _equalize_tab_widths(self):
         labels = ["Filename Cleanup", "Tags", "Track Order", "Album Art", "Settings"]
@@ -305,11 +311,57 @@ class MusicFixGUI(tk.Tk):
             row=3, column=2, columnspan=2, sticky="w", padx=6, pady=(12, 0)
         )
 
-    def _build_placeholder_tabs(self):
+    def _build_album_art_tab(self):
         ttk.Label(
             self.album_art_tab,
-            text="Album artwork tools will be added here after the tag and apply services are stable.",
-        ).pack(anchor="w")
+            text="Choose a JPG or PNG. Artwork edits remain pending until Apply Changes.",
+        ).grid(row=0, column=0, columnspan=4, sticky="w")
+        self.artwork_file_label = ttk.Label(self.album_art_tab, text="No image selected")
+        self.artwork_file_label.grid(row=1, column=0, columnspan=4, sticky="w", pady=(8, 10))
+
+        ttk.Button(
+            self.album_art_tab,
+            text="Choose Image File",
+            command=self._choose_artwork,
+        ).grid(row=2, column=0, sticky="w")
+        ttk.Button(
+            self.album_art_tab,
+            text="Use Artwork from Selected Track",
+            command=self.use_artwork_from_selected_track,
+        ).grid(row=2, column=1, columnspan=2, sticky="w", padx=6)
+
+        ttk.Button(
+            self.album_art_tab,
+            text="Set Artwork for Selected",
+            command=self.set_artwork_for_selected,
+        ).grid(row=3, column=0, sticky="w", pady=(8, 0))
+        ttk.Button(
+            self.album_art_tab,
+            text="Set Artwork for All",
+            command=self.set_artwork_for_all,
+        ).grid(row=3, column=1, sticky="w", padx=6, pady=(8, 0))
+        ttk.Button(
+            self.album_art_tab,
+            text="Remove from Selected",
+            command=self.remove_artwork_from_selected,
+        ).grid(row=4, column=0, sticky="w", pady=(8, 0))
+        ttk.Button(
+            self.album_art_tab,
+            text="Remove from All",
+            command=self.remove_artwork_from_all,
+        ).grid(row=4, column=1, sticky="w", padx=6, pady=(8, 0))
+        ttk.Button(
+            self.album_art_tab,
+            text="Reset Selected Artwork Edit",
+            command=self.reset_artwork_for_selected,
+        ).grid(row=5, column=0, sticky="w", pady=(8, 0))
+        ttk.Button(
+            self.album_art_tab,
+            text="Reset All Artwork Edits",
+            command=self.reset_artwork_for_all,
+        ).grid(row=5, column=1, sticky="w", padx=6, pady=(8, 0))
+
+    def _build_settings_tab(self):
         ttk.Label(
             self.settings_tab,
             text="Saved rules, theme, confirmation, and backup options will be added here.",
@@ -321,6 +373,7 @@ class MusicFixGUI(tk.Tk):
             return
         self.folder = Path(path)
         self.folder_label.config(text=str(self.folder))
+        self.selected_artwork = None
         self.scan_folder()
 
     def scan_folder(self):
@@ -355,6 +408,7 @@ class MusicFixGUI(tk.Tk):
                     item.effective_tag("date"),
                     item.effective_tag("genre"),
                     item.effective_tag("tracknumber"),
+                    item.effective_artwork_status(),
                     "; ".join(get_warnings(item, duplicate_track_ids)),
                 ),
             )
@@ -546,7 +600,87 @@ class MusicFixGUI(tk.Tk):
     def clear_all_changes(self):
         for item in self.items:
             item.clear_pending_tags()
+            item.reset_pending_artwork()
         self.recompute_proposed_names()
+
+    def _choose_artwork(self):
+        path = filedialog.askopenfilename(
+            title="Choose Album Artwork",
+            filetypes=[("Image files", "*.jpg *.jpeg *.png"), ("All files", "*.*")],
+        )
+        if not path:
+            return None
+        try:
+            artwork = load_artwork_file(Path(path))
+        except (ArtworkError, OSError) as error:
+            messagebox.showerror("Artwork error", str(error))
+            return None
+        self.artwork_file_label.config(text=f"Selected image: {artwork.source_name}")
+        self.selected_artwork = artwork
+        return artwork
+
+    def use_artwork_from_selected_track(self):
+        items = self._selected_items()
+        if not items:
+            return
+        if len(items) != 1:
+            messagebox.showinfo("Choose one track", "Select exactly one track to use as the artwork source.")
+            return
+
+        source = items[0]
+        artwork = source.pending_artwork if source.artwork_change_pending else extract_embedded_artwork(source.path)
+        if artwork is None:
+            messagebox.showinfo("No artwork", "The selected track does not contain embedded artwork.")
+            return
+
+        self.selected_artwork = artwork
+        self.artwork_file_label.config(text=f"Selected image: embedded artwork from {source.filename}")
+
+    def _get_selected_artwork(self):
+        if self.selected_artwork is not None:
+            return self.selected_artwork
+        return self._choose_artwork()
+
+    def set_artwork_for_selected(self):
+        items = self._selected_items()
+        if not items:
+            return
+        artwork = self._get_selected_artwork()
+        if artwork is None:
+            return
+        for item in items:
+            item.set_pending_artwork(artwork)
+        self._refresh_tree()
+
+    def set_artwork_for_all(self):
+        if not self.items:
+            return
+        artwork = self._get_selected_artwork()
+        if artwork is None:
+            return
+        for item in self.items:
+            item.set_pending_artwork(artwork)
+        self._refresh_tree()
+
+    def remove_artwork_from_selected(self):
+        for item in self._selected_items():
+            item.erase_artwork()
+        self._refresh_tree()
+
+    def remove_artwork_from_all(self):
+        for item in self.items:
+            item.erase_artwork()
+        self._refresh_tree()
+
+    def reset_artwork_for_selected(self):
+        for item in self._selected_items():
+            item.reset_pending_artwork()
+        self._refresh_tree()
+
+    def reset_artwork_for_all(self):
+        for item in self.items:
+            item.reset_pending_artwork()
+        self._refresh_tree()
 
     def _scan_options(self):
         return ScanOptions(
@@ -601,6 +735,10 @@ class MusicFixGUI(tk.Tk):
             message += f"\n\n{len(result.skipped_files)} file(s) could not be opened for tag editing."
         if result.tag_errors:
             message += f"\n\n{len(result.tag_errors)} file(s) failed while saving tags."
+        if result.artwork_files:
+            message += f"\nArtwork updated: {result.artwork_files}"
+        if result.artwork_errors:
+            message += f"\n\n{len(result.artwork_errors)} file(s) failed while saving artwork."
         messagebox.showinfo("Apply Changes", message)
 
     def show_remove_rules_help(self):

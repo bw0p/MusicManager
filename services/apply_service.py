@@ -3,6 +3,7 @@ from pathlib import Path
 
 from audio_utils import ensure_id3_header, load_audio
 from models import TrackItem
+from services.artwork_service import apply_artwork_change
 from services.rename_service import execute_renames, plan_renames
 from tag_service import apply_pending_tags
 
@@ -13,6 +14,8 @@ class ApplyResult:
     tagged_files: int = 0
     skipped_files: list[str] = field(default_factory=list)
     tag_errors: list[str] = field(default_factory=list)
+    artwork_files: int = 0
+    artwork_errors: list[str] = field(default_factory=list)
 
 
 class ApplyError(Exception):
@@ -53,4 +56,11 @@ def apply_changes(folder: Path, items: list[TrackItem]) -> ApplyResult:
         except Exception as error:
             result.tag_errors.append(item.filename)
             print(f"[tag save failed] {item.filename}: {type(error).__name__}: {error}")
+
+        try:
+            if apply_artwork_change(item):
+                result.artwork_files += 1
+        except Exception as error:
+            result.artwork_errors.append(item.filename)
+            print(f"[artwork save failed] {item.filename}: {type(error).__name__}: {error}")
     return result

@@ -4,6 +4,7 @@ from pathlib import Path
 from audio_utils import first_contributing_artist, load_audio
 from models import TrackItem
 from rename_rules import apply_remove_rules, clean_spaces, remove_between_delims, safe_filename
+from services.artwork_service import has_embedded_artwork
 from tag_service import read_supported_tags
 
 
@@ -62,6 +63,7 @@ def scan_folder(folder: Path, options: ScanOptions) -> list[TrackItem]:
                 artist_first=artist_first,
                 tags=tags,
                 validation_warnings=validation_warnings,
+                artwork_present=has_embedded_artwork(path),
             )
         )
     return items
