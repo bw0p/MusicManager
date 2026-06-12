@@ -22,18 +22,27 @@ Please head to [the releases page](https://github.com/bw0p/MusicManager/releases
 As of now, I have no plans on releasing a Mac or Linux version unless there is enough interest.
 
 # How to run
-If all you care about is the app, then if you have python downloaded you can open app.py. If you plan on making edits and need a better way to debug follow this guide:
+If you plan on making edits and need a better way to debug follow this guide:
 
 I use VS Code so im not sure how this would work on other IDEs (or if you're running this off a terminal without VS Code).
 
 For VS Code make sure you have the Python extension downloaded!!
 
 In your terminal paste in these 1 by 1:
-```
+```powershell
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
-py -m pip install mutagen
+py -m pip install -r requirements.txt
 python app.py
+```
+
+If you get a permission issue you may also use 
+```powershell
+.\.venv\Scripts\activate.bat
+```
+Or the following however the previous solution is easier.
+```
+(Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned) ; (& YOURDRIVE:\FILEPATH\MusicManager\.venv\Scripts\Activate.ps1)  
 ```
 
 Or make use of the built in VS code debugging that will use the launch.json. Just make sure you're on app.py when you click on run.
