@@ -2,7 +2,12 @@ import unittest
 from pathlib import Path
 
 from models import TrackItem
-from tag_service import apply_pending_tags, extract_tag_value_from_filename, read_supported_tags
+from tag_service import (
+    apply_pending_tags,
+    extract_tag_value_from_filename,
+    read_supported_tags,
+    title_from_filename,
+)
 
 
 class FakeAudio(dict):
@@ -20,6 +25,7 @@ class TagServiceTests(unittest.TestCase):
 
     def test_reads_all_supported_fields(self):
         audio = FakeAudio(
+            title=["Song"],
             artist=["Artist"],
             albumartist=["Album Artist"],
             album=["Album"],
@@ -31,6 +37,7 @@ class TagServiceTests(unittest.TestCase):
         tags = read_supported_tags(audio)
 
         self.assertEqual(tags["artist"], "Artist")
+        self.assertEqual(tags["title"], "Song")
         self.assertEqual(tags["date"], "2026")
         self.assertEqual(tags["tracknumber"], "03")
 
@@ -71,6 +78,10 @@ class TagServiceTests(unittest.TestCase):
         self.assertIsNone(
             extract_tag_value_from_filename("My Song Artist Name.mp3", "[", "]")
         )
+
+    def test_title_uses_filename_without_extension(self):
+        self.assertEqual(title_from_filename("Good Morning.mp3"), "Good Morning")
+        self.assertEqual(title_from_filename("I.Wonder.flac"), "I.Wonder")
 
 
 if __name__ == "__main__":

@@ -33,6 +33,8 @@ def get_warnings(
 
     warnings = list(item.validation_warnings)
 
+    if not item.effective_tag("title"):
+        warnings.append("Title missing")
     if not (item.effective_tag("artist") or item.artist_first):
         warnings.append("Contributing Artist missing")
     if not item.effective_tag("album"):

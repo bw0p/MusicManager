@@ -12,6 +12,7 @@ class TagField:
 
 
 TAG_FIELDS = (
+    TagField("Title", "title"),
     TagField("Album Artist", "albumartist"),
     TagField("Contributing Artist", "artist"),
     TagField("Album", "album"),
@@ -64,3 +65,7 @@ def extract_tag_value_from_filename(
 
     value = value.strip()
     return value or None
+
+
+def title_from_filename(filename: str) -> str:
+    return Path(filename).stem.strip()

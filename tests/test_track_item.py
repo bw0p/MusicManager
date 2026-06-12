@@ -22,9 +22,10 @@ class TrackItemWarningTests(unittest.TestCase):
         item = self.make_item()
         self.assertEqual(
             get_warnings(item),
-            ["Album missing", "Year missing", "Genre missing", "Track# missing"],
+            ["Title missing", "Album missing", "Year missing", "Genre missing", "Track# missing"],
         )
 
+        item.set_pending_tag("title", "Song")
         item.set_pending_tag("albumartist", "Artist")
         item.set_pending_tag("album", "Album")
         item.set_pending_tag("date", "2026")
@@ -37,6 +38,7 @@ class TrackItemWarningTests(unittest.TestCase):
         item = self.make_item(
             artist_first="",
             tags={
+                "title": "Song",
                 "album": "Album",
                 "date": "2026",
                 "genre": "Rock",

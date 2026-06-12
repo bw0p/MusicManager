@@ -11,6 +11,7 @@ from tag_service import (
     TAG_FIELDS,
     TAG_KEY_BY_LABEL,
     extract_tag_value_from_filename,
+    title_from_filename,
 )
 from warning_service import get_duplicate_track_ids, get_warnings
 
@@ -63,6 +64,7 @@ class MusicFixGUI(tk.Tk):
         columns = (
             "current",
             "proposed",
+            "title",
             "artist",
             "albumartist",
             "album",
@@ -75,6 +77,7 @@ class MusicFixGUI(tk.Tk):
         headings = {
             "current": "Current Filename",
             "proposed": "Proposed Filename",
+            "title": "Title",
             "artist": "Contributing Artist",
             "albumartist": "Album Artist",
             "album": "Album",
@@ -86,6 +89,7 @@ class MusicFixGUI(tk.Tk):
         widths = {
             "current": 280,
             "proposed": 280,
+            "title": 220,
             "artist": 170,
             "albumartist": 170,
             "album": 170,
@@ -160,37 +164,34 @@ class MusicFixGUI(tk.Tk):
         self.remove_text.insert("1.0", "SpotiDownloader.com - \n")
         self.remove_text.bind("<KeyRelease>", lambda _event: self.recompute_proposed_names())
 
+        options = ttk.Frame(self.filename_tab)
+        options.grid(row=2, column=0, columnspan=4, sticky="w")
+
         self.smart_spaces_var = tk.BooleanVar(value=True)
         self.smart_spaces_var.trace_add("write", lambda *_args: self.recompute_proposed_names())
         ttk.Checkbutton(
-            self.filename_tab,
+            options,
             text="Smart spacing",
             variable=self.smart_spaces_var,
-        ).grid(row=2, column=0, sticky="w")
+        ).pack(side="left")
 
         self.between_enabled = tk.BooleanVar(value=False)
         self.between_enabled.trace_add("write", lambda *_args: self.recompute_proposed_names())
         ttk.Checkbutton(
-            self.filename_tab,
+            options,
             text="Remove text between delimiters",
             variable=self.between_enabled,
-        ).grid(row=2, column=1, sticky="w", padx=(12, 0))
+        ).pack(side="left", padx=(16, 0))
 
-        ttk.Label(self.filename_tab, text="Pair:").grid(row=2, column=2, padx=(12, 4))
-        self.between_pair = ttk.Entry(self.filename_tab, width=6)
+        ttk.Label(options, text="Pair:").pack(side="left", padx=(8, 4))
+        self.between_pair = ttk.Entry(options, width=6)
         self.between_pair.config(
             validate="key",
             validatecommand=(self.register(lambda value: len(value) <= 2), "%P"),
         )
         self.between_pair.insert(0, "[]")
         self.between_pair.bind("<KeyRelease>", lambda _event: self.recompute_proposed_names())
-        self.between_pair.grid(row=2, column=3, sticky="w")
-
-        ttk.Button(
-            self.filename_tab,
-            text="Preview Filename Changes",
-            command=self.recompute_proposed_names,
-        ).grid(row=3, column=0, sticky="w", pady=(8, 0))
+        self.between_pair.pack(side="left")
 
     def _build_tags_tab(self):
         ttk.Label(self.tags_tab, text="Field:").grid(row=0, column=0, sticky="w")
@@ -226,32 +227,37 @@ class MusicFixGUI(tk.Tk):
         ttk.Button(self.tags_tab, text="Reset All Edits for Field", command=self.reset_tag_for_all).grid(
             row=2, column=1, columnspan=2, pady=(8, 0), sticky="w", padx=6
         )
+        ttk.Button(
+            self.tags_tab,
+            text="Extract Title from Filename",
+            command=self.extract_titles_from_filenames,
+        ).grid(row=3, column=0, columnspan=2, pady=(8, 0), sticky="w")
 
         separator = ttk.Separator(self.tags_tab)
-        separator.grid(row=3, column=0, columnspan=4, sticky="ew", pady=12)
+        separator.grid(row=4, column=0, columnspan=4, sticky="ew", pady=12)
         ttk.Label(self.tags_tab, text="Extract selected field from filename").grid(
-            row=4, column=0, columnspan=2, sticky="w"
+            row=5, column=0, columnspan=2, sticky="w"
         )
-        ttk.Label(self.tags_tab, text="Text before:").grid(row=5, column=0, sticky="e", pady=(6, 0))
+        ttk.Label(self.tags_tab, text="Text before:").grid(row=6, column=0, sticky="e", pady=(6, 0))
         self.tag_extract_before_entry = ttk.Entry(self.tags_tab, width=16)
-        self.tag_extract_before_entry.grid(row=5, column=1, sticky="w", padx=6, pady=(6, 0))
-        ttk.Label(self.tags_tab, text="Text after:").grid(row=5, column=2, sticky="e", pady=(6, 0))
+        self.tag_extract_before_entry.grid(row=6, column=1, sticky="w", padx=6, pady=(6, 0))
+        ttk.Label(self.tags_tab, text="Text after:").grid(row=6, column=2, sticky="e", pady=(6, 0))
         self.tag_extract_after_entry = ttk.Entry(self.tags_tab, width=16)
-        self.tag_extract_after_entry.grid(row=5, column=3, sticky="w", padx=6, pady=(6, 0))
+        self.tag_extract_after_entry.grid(row=6, column=3, sticky="w", padx=6, pady=(6, 0))
         ttk.Button(
             self.tags_tab,
             text="Extract for Selected",
             command=self.extract_tag_from_selected_filenames,
-        ).grid(row=6, column=0, sticky="w", pady=(8, 0))
+        ).grid(row=7, column=0, sticky="w", pady=(8, 0))
         ttk.Button(
             self.tags_tab,
             text="Extract for All",
             command=self.extract_tag_from_all_filenames,
-        ).grid(row=6, column=1, sticky="w", padx=6, pady=(8, 0))
+        ).grid(row=7, column=1, sticky="w", padx=6, pady=(8, 0))
         ttk.Label(
             self.tags_tab,
             text="Example: before '[' and after ']' extracts Artist from Song [Artist] 2026.",
-        ).grid(row=7, column=0, columnspan=4, sticky="w", pady=(8, 0))
+        ).grid(row=8, column=0, columnspan=4, sticky="w", pady=(8, 0))
 
     def _build_track_tab(self):
         ttk.Button(self.track_tab, text="Move Up", command=lambda: self.move_selected(-1)).grid(row=0, column=0)
@@ -293,10 +299,10 @@ class MusicFixGUI(tk.Tk):
             row=2, column=3, sticky="w", padx=6, pady=(12, 0)
         )
         ttk.Button(self.track_tab, text="Reset Selected Edit", command=self.clear_track_selected).grid(
-            row=2, column=4, sticky="w", pady=(12, 0)
+            row=3, column=0, columnspan=2, sticky="w", pady=(12, 0)
         )
         ttk.Button(self.track_tab, text="Reset All Track Edits", command=self.clear_track_all).grid(
-            row=2, column=5, sticky="w", padx=6, pady=(12, 0)
+            row=3, column=2, columnspan=2, sticky="w", padx=6, pady=(12, 0)
         )
 
     def _build_placeholder_tabs(self):
@@ -342,6 +348,7 @@ class MusicFixGUI(tk.Tk):
                 values=(
                     item.filename,
                     item.proposed_filename,
+                    item.effective_tag("title"),
                     item.effective_tag("artist"),
                     item.effective_tag("albumartist"),
                     item.effective_tag("album"),
@@ -408,6 +415,15 @@ class MusicFixGUI(tk.Tk):
         for item in items:
             item.reset_pending_tag(key)
         self._refresh_tree()
+
+    def extract_titles_from_filenames(self):
+        for item in self.items:
+            item.set_pending_tag("title", title_from_filename(item.proposed_filename))
+        self._refresh_tree()
+        messagebox.showinfo(
+            "Extract Title",
+            f"Set titles from the proposed filenames for {len(self.items)} file(s).",
+        )
 
     def extract_tag_from_selected_filenames(self):
         self._extract_tag_from_filenames(self._selected_items())
