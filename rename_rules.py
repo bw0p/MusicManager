@@ -35,7 +35,7 @@ def extract_leading_index(title: str) -> int | None:
 
 
 def build_fuzzy_pattern(literal: str) -> re.Pattern:
-    """
+    r"""
     Turn a literal removal string into a regex that is tolerant to whitespace.
     - Any run of whitespace becomes r"\s+"
     - Any "-" becomes r"\s*-\s*"

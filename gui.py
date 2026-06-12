@@ -1,5 +1,6 @@
 import os
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk, filedialog, messagebox
 from audio_utils import ensure_id3_header
 
@@ -13,6 +14,8 @@ from rename_rules import (
     extract_index_with_pair,
 )
 from audio_utils import first_contributing_artist, get_tag, set_tag, load_audio
+from models import TrackItem
+from warning_service import get_warnings
 
 
 #All supported audio extensions (case-insensitive)
@@ -26,7 +29,7 @@ class MusicFixGUI(tk.Tk):
         self.geometry("1100x650")
 
         self.folder = None
-        self.items = []  # list[dict] in current UI order
+        self.items: list[TrackItem] = []
 
         self._build_ui()
 
@@ -192,14 +195,11 @@ class MusicFixGUI(tk.Tk):
                 continue
 
             audio, err = load_audio(src)
-            warnings = []
             artist_first = None
             album_artist = None
             track = None
 
             if audio is None:
-                warnings.append("Failed to read as audio file/Could not read tags")
-                warnings.append(err or "(no error provided)")
                 print(f"[load_audio] {filename}: {repr(err)}")
 
 
@@ -209,15 +209,6 @@ class MusicFixGUI(tk.Tk):
                 album_artist = get_tag(audio, "albumartist")
                 track = get_tag(audio, "tracknumber")
 
-                if not album_artist:
-                    if artist_first:
-                        warnings.append("AlbumArtist missing (can auto-fill)")
-                    else:
-                        warnings.append("AlbumArtist missing + no artist found")
-
-                if not track:
-                    warnings.append("Track# missing")
-
             base_no_ext = os.path.splitext(filename)[0]
             proposed_base = apply_remove_rules(base_no_ext, rules, smart_spaces=smart)
 
@@ -225,26 +216,29 @@ class MusicFixGUI(tk.Tk):
                 if len(pair) == 2:
                     left, right = pair[0], pair[1]
                     proposed_base = remove_between_delims(proposed_base, left, right)
+                    validation_warnings = []
                 else:
-                    warnings.append("Delimiter pair must be exactly 2 characters (e.g. [] or &&).")
+                    validation_warnings = ["Delimiter pair must be exactly 2 characters (e.g. [] or &&)."]
+            else:
+                validation_warnings = []
 
             proposed_base = safe_filename(clean_spaces(proposed_base))
             proposed_filename = proposed_base + ext
 
-            item = {
-                "src": src,
-                "filename": filename,
-                "ext": ext,
-                "audio_ok": (audio is not None),
-                "artist_first": artist_first or "",
-                "album_artist": album_artist or "",
-                "track": track or "",
-                "proposed_filename": proposed_filename,
-                "base_warnings": list(warnings),
-                "warnings": "; ".join(warnings),
-                "set_album_artist": None,
-                "set_track": None,
-            }
+            item = TrackItem(
+                path=Path(src),
+                filename=filename,
+                ext=ext,
+                audio_ok=(audio is not None),
+                read_error=err,
+                artist_first=artist_first or "",
+                tags={
+                    "albumartist": album_artist or "",
+                    "tracknumber": track or "",
+                },
+                proposed_filename=proposed_filename,
+                validation_warnings=validation_warnings,
+            )
             self.items.append(item)
 
         self._refresh_tree()
@@ -254,20 +248,17 @@ class MusicFixGUI(tk.Tk):
             self.tree.delete(row)
 
         for idx, it in enumerate(self.items):
-            display_albumartist = it["set_album_artist"] if it["set_album_artist"] is not None else it["album_artist"]
-            display_track = it["set_track"] if it["set_track"] is not None else it["track"]
-
             self.tree.insert(
                 "",
                 "end",
                 iid=str(idx),
                 values=(
-                    it["filename"],
-                    it["proposed_filename"],
-                    it["artist_first"],
-                    display_albumartist,
-                    display_track,
-                    it["warnings"],
+                    it.filename,
+                    it.proposed_filename,
+                    it.artist_first,
+                    it.effective_tag("albumartist"),
+                    it.effective_tag("tracknumber"),
+                    "; ".join(get_warnings(it)),
                 )
             )
 
@@ -304,12 +295,12 @@ class MusicFixGUI(tk.Tk):
             messagebox.showinfo("No selection", "Select one or more rows first.")
             return
         for iid in sel:
-            self.items[int(iid)]["set_album_artist"] = value
+            self.items[int(iid)].set_pending_tag("albumartist", value)
         self._refresh_tree()
 
     def apply_order_as_track_numbers(self):
         for i, it in enumerate(self.items, start=1):
-            it["set_track"] = f"{i:02d}"
+            it.set_pending_tag("tracknumber", f"{i:02d}")
         self._refresh_tree()
 
     def extract_track_from_titles(self):
@@ -317,11 +308,11 @@ class MusicFixGUI(tk.Tk):
         pair = self.track_pair.get().strip() if hasattr(self, "track_pair") else "[]"
 
         for it in self.items:
-            current_track = it["set_track"] if it["set_track"] is not None else it["track"]
+            current_track = it.effective_tag("tracknumber")
             if current_track:
                 continue
 
-            title_no_ext = os.path.splitext(it["proposed_filename"])[0]
+            title_no_ext = os.path.splitext(it.proposed_filename)[0]
 
             # 1) try custom markers first
             maybe = extract_index_with_pair(title_no_ext, pair)
@@ -331,7 +322,7 @@ class MusicFixGUI(tk.Tk):
                 maybe = extract_leading_index(title_no_ext)
 
             if maybe is not None:
-                it["set_track"] = f"{maybe:02d}"
+                it.set_pending_tag("tracknumber", f"{maybe:02d}")
                 changed += 1
 
         self._refresh_tree()
@@ -349,9 +340,9 @@ class MusicFixGUI(tk.Tk):
         rename_ops = []
 
         for it in self.items:
-            src = it["src"]
-            old = it["filename"]
-            new = it["proposed_filename"]
+            src = str(it.path)
+            old = it.filename
+            new = it.proposed_filename
 
             if old == new:
                 continue
@@ -367,7 +358,7 @@ class MusicFixGUI(tk.Tk):
             existing.add(candidate)
 
             rename_ops.append((old, candidate, src))
-            it["proposed_filename"] = candidate
+            it.proposed_filename = candidate
 
         for old, candidate, src in rename_ops:
             dst = os.path.join(self.folder, candidate)
@@ -378,29 +369,29 @@ class MusicFixGUI(tk.Tk):
                 return
 
             for it in self.items:
-                if it["filename"] == old and it["src"] == src:
-                    it["filename"] = candidate
-                    it["src"] = dst
+                if it.filename == old and str(it.path) == src:
+                    it.filename = candidate
+                    it.path = Path(dst)
 
         tag_errors = 0
         tag_skipped = 0
         
         # ensure MP3 tag container exists before saving
         for it in self.items:
-            if it["src"].lower().endswith(".mp3"):
-                ensure_id3_header(it["src"])
+            if str(it.path).lower().endswith(".mp3"):
+                ensure_id3_header(str(it.path))
 
-            audio, err = load_audio(it["src"])
+            audio, err = load_audio(str(it.path))
             if audio is None:
                 tag_skipped += 1
                 if err:
-                    print(f"[apply load_audio] {it['filename']}: {err}")
+                    print(f"[apply load_audio] {it.filename}: {err}")
                 continue
 
             current_albumartist = get_tag(audio, "albumartist")
             artist_first = first_contributing_artist(audio)
-            desired_albumartist = it["set_album_artist"]
-            if desired_albumartist is None:
+            desired_albumartist = it.pending_tags.get("albumartist")
+            if "albumartist" not in it.pending_tags:
                 if not current_albumartist and artist_first:
                     desired_albumartist = artist_first
 
@@ -408,13 +399,14 @@ class MusicFixGUI(tk.Tk):
                 if desired_albumartist:
                     set_tag(audio, "albumartist", desired_albumartist)
 
-                if it["set_track"]:
-                    set_tag(audio, "tracknumber", it["set_track"])
+                desired_track = it.pending_tags.get("tracknumber")
+                if desired_track:
+                    set_tag(audio, "tracknumber", desired_track)
 
                 audio.save()
             except Exception as e:
                 tag_errors += 1
-                print(f"[tag save failed] {it['filename']}: {type(e).__name__}: {e}")
+                print(f"[tag save failed] {it.filename}: {type(e).__name__}: {e}")
 
 
         self.scan_folder()
@@ -436,22 +428,18 @@ class MusicFixGUI(tk.Tk):
         left, right = (pair[0], pair[1]) if len(pair) == 2 else (None, None)
 
         for it in self.items:
-            base = it.get("base_warnings", [])
-            it["warnings"] = "; ".join(base)
-
-            base_no_ext = os.path.splitext(it["filename"])[0]
+            it.validation_warnings.clear()
+            base_no_ext = os.path.splitext(it.filename)[0]
             proposed_base = apply_remove_rules(base_no_ext, rules, smart_spaces=smart)
 
             if use_between:
                 if left and right:
                     proposed_base = remove_between_delims(proposed_base, left, right)
                 else:
-                    w = list(base)
-                    w.append("Delimiter pair must be exactly 2 characters (e.g. [] or &&).")
-                    it["warnings"] = "; ".join(w)
+                    it.validation_warnings.append("Delimiter pair must be exactly 2 characters (e.g. [] or &&).")
 
             proposed_base = safe_filename(clean_spaces(proposed_base))
-            it["proposed_filename"] = proposed_base + it["ext"]
+            it.proposed_filename = proposed_base + it.ext
 
         self._refresh_tree()
 
@@ -483,11 +471,7 @@ class MusicFixGUI(tk.Tk):
 
     def clear_all_changes(self):
         for it in self.items:
-            it["set_album_artist"] = None
-            it["set_track"] = None
-
-            base = it.get("base_warnings", [])
-            it["warnings"] = "; ".join(base)
+            it.clear_pending_tags()
 
         self.recompute_proposed_names()
 
@@ -496,12 +480,12 @@ class MusicFixGUI(tk.Tk):
         if not sel:
             return
         for iid in sel:
-            self.items[int(iid)]["set_track"] = None
+            self.items[int(iid)].reset_pending_tag("tracknumber")
         self._refresh_tree()
 
     def clear_track_all(self):
         for it in self.items:
-            it["set_track"] = None
+            it.reset_pending_tag("tracknumber")
         self._refresh_tree()
 
     def set_album_artist_for_all(self):
@@ -510,7 +494,7 @@ class MusicFixGUI(tk.Tk):
             messagebox.showwarning("Empty", "Enter an Album Artist value first.")
             return
         for it in self.items:
-            it["set_album_artist"] = value
+            it.set_pending_tag("albumartist", value)
         self._refresh_tree()
 
     def clear_album_artist_selected(self):
@@ -518,11 +502,11 @@ class MusicFixGUI(tk.Tk):
         if not sel:
             return
         for iid in sel:
-            self.items[int(iid)]["set_album_artist"] = None
+            self.items[int(iid)].reset_pending_tag("albumartist")
         self._refresh_tree()
 
     def clear_album_artist_all(self):
         for it in self.items:
-            it["set_album_artist"] = None
+            it.reset_pending_tag("albumartist")
         self._refresh_tree()
 
