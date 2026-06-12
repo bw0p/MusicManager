@@ -1,9 +1,19 @@
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+import os
+
+APP_NAME = "MusicFileManager"
+
+def get_settings_path() -> Path:
+    if os.name == "nt":
+        base = Path(os.getenv("APPDATA", Path.home()))
+        return base / APP_NAME / "settings.json"
+
+    return Path.home() / ".config" / APP_NAME / "settings.json"
 
 
-SETTINGS_PATH = Path(__file__).resolve().parent.parent / "settings.json"
+SETTINGS_PATH = get_settings_path()
 
 
 @dataclass
@@ -67,11 +77,11 @@ def load_settings(path: Path = SETTINGS_PATH) -> AppSettings:
 
 
 def save_settings(settings: AppSettings, path: Path = SETTINGS_PATH) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(asdict(settings), indent=2, ensure_ascii=True) + "\n",
         encoding="utf-8",
     )
-
 
 def _rule_preset_from_dict(data: dict) -> RulePreset:
     defaults = asdict(RulePreset())
