@@ -20,6 +20,10 @@ from tag_service import (
 )
 from warning_service import get_duplicate_track_ids, get_warnings
 
+def resource_path(relative_path: str) -> Path:
+    if hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / relative_path
+    return Path(__file__).parent / relative_path
 
 def _set_windows_app_mode(dark: bool):
     if sys.platform != "win32":
@@ -48,6 +52,9 @@ class MusicFixGUI(tk.Tk):
         self.withdraw()
         self.settings = settings
         self.title("Music File Manager")
+        icon_path = resource_path("assets/app_icon.ico")
+        if icon_path.exists():
+            self.iconbitmap(icon_path)
         self.geometry("1250x780")
         self.minsize(900, 600)
 
