@@ -15,6 +15,12 @@ Features:
 
 Themes are saved separately from rule sets, so loading another set never changes the app's appearance.
 
+# Releases
+I have released my first Windows version of the app!
+Please head to [the releases page](https://github.com/bw0p/MusicManager/releases) for the latest release.
+
+As of now, I have no plans on releasing a Mac or Linux version unless there is enough interest.
+
 # How to run
 If all you care about is the app, then if you have python downloaded you can open app.py. If you plan on making edits and need a better way to debug follow this guide:
 
@@ -31,11 +37,6 @@ python app.py
 ```
 
 Or make use of the built in VS code debugging that will use the launch.json. Just make sure you're on app.py when you click on run.
-
-# Releases
-I have released my first windows version of the app!
-Please head to [https://github.com/bw0p/MusicManager/releases](url) for the latest release.
-As of now I have no plans on releasing a mac or linux version unless I see people care enough to actually want one.
 
 # Issues
 None as of now
