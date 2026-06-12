@@ -117,15 +117,12 @@ def extract_index_with_pair(title: str, pair: str) -> int | None:
 
     left, right = pair[0], pair[1]
 
-    # Same-char pair: ZZ means Z03Z
-    if left == right:
-        m = re.match(rf"^{re.escape(left)}\s*(\d{{1,3}})\s*{re.escape(right)}\s+", s)
-        if m:
-            return int(m.group(1))
-        return None
-
-    # Normal: [] () {} etc
-    m = re.match(rf"^{re.escape(left)}\s*(\d{{1,3}})\s*{re.escape(right)}\s+", s)
+    # Search the filename for the exact selected marker pair. This supports
+    # prefixes such as "helloExtra '10' Song" as well as "[03] Song".
+    m = re.search(
+        rf"{re.escape(left)}\s*(\d{{1,3}})\s*{re.escape(right)}",
+        s,
+    )
     if m:
         return int(m.group(1))
     return None

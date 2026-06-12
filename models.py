@@ -23,6 +23,9 @@ class TrackItem:
     def set_pending_tag(self, key: str, value: str) -> None:
         self.pending_tags[key] = value
 
+    def erase_tag(self, key: str) -> None:
+        self.pending_tags[key] = ""
+
     def reset_pending_tag(self, key: str) -> None:
         self.pending_tags.pop(key, None)
 

@@ -18,7 +18,6 @@ def first_contributing_artist(audio) -> str | None:
         "contributing artists",
         "artists",
         "artist",       # most common
-        "albumartist",
     ]
 
     for key in candidate_keys:
