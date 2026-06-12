@@ -694,12 +694,17 @@ class MusicFixGUI(tk.Tk):
             return
 
         try:
+            dark = self.theme_var.get() == "Dark" if hasattr(self, "theme_var") else self.settings.theme == "Dark"
+
             was_zoomed = self.state() == "zoomed"
             geometry = self.geometry()
 
             self.withdraw()
             self.update_idletasks()
             self.deiconify()
+            self.update_idletasks()
+
+            self._apply_windows_window_theme(self, dark)
 
             if was_zoomed:
                 self.state("zoomed")
