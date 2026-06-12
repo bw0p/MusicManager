@@ -1,29 +1,18 @@
-import os
 import tkinter as tk
 from pathlib import Path
 from tkinter import font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
-from audio_utils import ensure_id3_header, first_contributing_artist, load_audio
 from models import TrackItem
-from rename_rules import (
-    apply_remove_rules,
-    clean_spaces,
-    extract_index_with_pair,
-    remove_between_delims,
-    safe_filename,
-)
+from rename_rules import extract_index_with_pair
+from services.apply_service import ApplyError, apply_changes as apply_item_changes
+from services.scanner import ScanOptions, propose_filename, scan_folder as scan_audio_folder
 from tag_service import (
     TAG_FIELDS,
     TAG_KEY_BY_LABEL,
-    apply_pending_tags,
     extract_tag_value_from_filename,
-    read_supported_tags,
 )
 from warning_service import get_duplicate_track_ids, get_warnings
-
-
-AUDIO_EXTS = {".mp3", ".m4a", ".flac", ".ogg", ".opus", ".wav", ".aiff", ".aac"}
 
 
 class MusicFixGUI(tk.Tk):
@@ -33,7 +22,7 @@ class MusicFixGUI(tk.Tk):
         self.geometry("1250x780")
         self.minsize(900, 600)
 
-        self.folder: str | None = None
+        self.folder: Path | None = None
         self.items: list[TrackItem] = []
 
         self._build_ui()
@@ -324,8 +313,8 @@ class MusicFixGUI(tk.Tk):
         path = filedialog.askdirectory()
         if not path:
             return
-        self.folder = path
-        self.folder_label.config(text=path)
+        self.folder = Path(path)
+        self.folder_label.config(text=str(self.folder))
         self.scan_folder()
 
     def scan_folder(self):
@@ -333,35 +322,7 @@ class MusicFixGUI(tk.Tk):
             messagebox.showwarning("No folder", "Choose a folder first.")
             return
 
-        self.items.clear()
-        rules, smart, use_between, pair = self._filename_options()
-
-        for filename in sorted(os.listdir(self.folder)):
-            src = os.path.join(self.folder, filename)
-            ext = os.path.splitext(filename)[1].lower()
-            if not os.path.isfile(src) or ext not in AUDIO_EXTS:
-                continue
-
-            audio, error = load_audio(src)
-            tags = read_supported_tags(audio) if audio is not None else {}
-            artist_first = first_contributing_artist(audio) or "" if audio is not None else ""
-            proposed_filename, validation_warnings = self._propose_filename(
-                filename, ext, rules, smart, use_between, pair
-            )
-
-            self.items.append(
-                TrackItem(
-                    path=Path(src),
-                    filename=filename,
-                    ext=ext,
-                    proposed_filename=proposed_filename,
-                    audio_ok=audio is not None,
-                    read_error=error,
-                    artist_first=artist_first,
-                    tags=tags,
-                    validation_warnings=validation_warnings,
-                )
-            )
+        self.items = scan_audio_folder(self.folder, self._scan_options())
 
         self._refresh_tree()
         self.status_label.config(text=f"Loaded {len(self.items)} audio file(s).")
@@ -533,7 +494,7 @@ class MusicFixGUI(tk.Tk):
         for item in self.items:
             if item.effective_tag("tracknumber"):
                 continue
-            title = os.path.splitext(item.proposed_filename)[0]
+            title = Path(item.proposed_filename).stem
             track_number = extract_index_with_pair(title, pair)
             if track_number is not None:
                 item.set_pending_tag("tracknumber", f"{track_number:02d}")
@@ -571,32 +532,18 @@ class MusicFixGUI(tk.Tk):
             item.clear_pending_tags()
         self.recompute_proposed_names()
 
-    def _filename_options(self):
-        rules = self.remove_text.get("1.0", "end").splitlines()
-        return (
-            rules,
-            bool(self.smart_spaces_var.get()),
-            bool(self.between_enabled.get()),
-            self.between_pair.get(),
+    def _scan_options(self):
+        return ScanOptions(
+            remove_rules=self.remove_text.get("1.0", "end").splitlines(),
+            smart_spaces=bool(self.smart_spaces_var.get()),
+            remove_between_enabled=bool(self.between_enabled.get()),
+            delimiter_pair=self.between_pair.get(),
         )
 
-    def _propose_filename(self, filename, ext, rules, smart, use_between, pair):
-        proposed_base = apply_remove_rules(os.path.splitext(filename)[0], rules, smart_spaces=smart)
-        warnings = []
-        if use_between:
-            if len(pair) == 2:
-                proposed_base = remove_between_delims(proposed_base, pair[0], pair[1])
-            else:
-                warnings.append("Delimiter pair must be exactly 2 characters (e.g. [] or &&).")
-        proposed_base = safe_filename(clean_spaces(proposed_base))
-        return proposed_base + ext, warnings
-
     def recompute_proposed_names(self):
-        rules, smart, use_between, pair = self._filename_options()
+        options = self._scan_options()
         for item in self.items:
-            item.proposed_filename, item.validation_warnings = self._propose_filename(
-                item.filename, item.ext, rules, smart, use_between, pair
-            )
+            item.proposed_filename, item.validation_warnings = propose_filename(item.filename, options)
         self._refresh_tree()
 
     def apply_changes(self):
@@ -622,66 +569,22 @@ class MusicFixGUI(tk.Tk):
         if not messagebox.askyesno("Apply", "This will rename files and write tags. Continue?"):
             return
 
-        existing = set(os.listdir(self.folder))
-        rename_operations = []
-        for item in self.items:
-            old = item.filename
-            new = item.proposed_filename
-            if old == new:
-                continue
-
-            base, ext = os.path.splitext(new)
-            candidate = new
-            suffix = 1
-            while candidate in existing and candidate != old:
-                candidate = f"{base} ({suffix}){ext}"
-                suffix += 1
-            existing.discard(old)
-            existing.add(candidate)
-            rename_operations.append((item, candidate))
-
-        for item, candidate in rename_operations:
-            destination = Path(self.folder) / candidate
-            try:
-                item.path.rename(destination)
-            except Exception as error:
-                messagebox.showerror(
-                    "Rename failed",
-                    f"Could not rename:\n{item.filename}\n\nto:\n{candidate}\n\n"
-                    "A file with that name may already exist or be open in another program.\n\n"
-                    f"Technical detail: {error}",
-                )
-                return
-            item.filename = candidate
-            item.proposed_filename = candidate
-            item.path = destination
-
-        tag_errors = 0
-        tag_skipped = 0
-        for item in self.items:
-            if item.path.suffix.lower() == ".mp3":
-                ensure_id3_header(str(item.path))
-
-            audio, error = load_audio(str(item.path))
-            if audio is None:
-                tag_skipped += 1
-                if error:
-                    print(f"[apply load_audio] {item.filename}: {error}")
-                continue
-
-            try:
-                apply_pending_tags(audio, item)
-                audio.save()
-            except Exception as error:
-                tag_errors += 1
-                print(f"[tag save failed] {item.filename}: {type(error).__name__}: {error}")
+        try:
+            result = apply_item_changes(self.folder, self.items)
+        except ApplyError as error:
+            detail = f"\n\nTechnical detail: {error.technical_detail}" if error.technical_detail else ""
+            messagebox.showerror("Apply failed", error.message + detail)
+            return
 
         self.scan_folder()
-        message = "Changes applied."
-        if tag_skipped:
-            message += f"\n\n{tag_skipped} file(s) could not be opened for tag editing."
-        if tag_errors:
-            message += f"\n\n{tag_errors} file(s) failed while saving tags."
+        message = (
+            f"Changes applied.\n\nRenamed: {result.renamed_files}\n"
+            f"Tags saved: {result.tagged_files}"
+        )
+        if result.skipped_files:
+            message += f"\n\n{len(result.skipped_files)} file(s) could not be opened for tag editing."
+        if result.tag_errors:
+            message += f"\n\n{len(result.tag_errors)} file(s) failed while saving tags."
         messagebox.showinfo("Apply Changes", message)
 
     def show_remove_rules_help(self):
