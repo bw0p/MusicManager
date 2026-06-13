@@ -1,4 +1,5 @@
 # Music File Manager Ver 0.1.2
+THIS IS AN OLD VERSION BEFORE MAJOR BACKEND CHANGES
 A simple music manager for renaming files and setting meta data.
 
 Features:
